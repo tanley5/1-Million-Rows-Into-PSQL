@@ -1,0 +1,61 @@
+{
+  "name": "CSV Pipeline - Upload and Preview (Skeleton)",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## 1. Upload form\nAdd an n8n Form Trigger with one required File field named `file`. Accept CSV files.",
+        "height": 180,
+        "width": 320
+      },
+      "id": "a3c1475b-17bb-471c-91e0-87fce27a9bd8",
+      "name": "Upload Form Placeholder",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 2. Send CSV to FastAPI\nAdd an HTTP Request node:\n- Method: POST\n- URL: `{{$env.CSV_PIPELINE_API_URL}}/uploads`\n- Body: multipart/form-data\n- Parameter name: `file`\n- Type: n8n Binary File\n- Input data field: the Form Trigger binary field",
+        "height": 260,
+        "width": 360
+      },
+      "id": "f12fa729-48c0-4584-b2ed-915f9588a795",
+      "name": "Upload API Placeholder",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        400,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 3. Preview response\nAdd a Form Ending node that displays:\n- `upload_id`\n- first 100 rows from `sample`\n- five cleaning statistics\n- normalized column datatypes\n- the URL for the Approve/Deny form with `upload_id` as a query parameter",
+        "height": 240,
+        "width": 360
+      },
+      "id": "d6c6926d-cba4-4fb8-af75-03956896b26a",
+      "name": "Preview Placeholder",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        840,
+        0
+      ]
+    }
+  ],
+  "connections": {},
+  "pinData": {},
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "8764585e-7047-47dc-976a-9201d129618c",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "tags": []
+}

@@ -1,0 +1,91 @@
+{
+  "name": "CSV Pipeline - Approve or Deny (Skeleton)",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## 1. Decision form\nAdd an n8n Form Trigger with:\n- hidden or text `upload_id`, populated from the query string\n- required `action` dropdown with Approve and Deny",
+        "height": 220,
+        "width": 340
+      },
+      "id": "418ab41f-e7b6-48bd-afdf-16a854dc63ec",
+      "name": "Decision Form Placeholder",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 2. Route the action\nAdd a Switch node using `action`:\n- Approve → approval HTTP request\n- Deny → denial HTTP request",
+        "height": 180,
+        "width": 320
+      },
+      "id": "ee4bce1c-f83b-48e0-a5c7-b9cd408d6d2a",
+      "name": "Action Switch Placeholder",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        400,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 3A. Approve\nAdd an HTTP Request node:\n- Method: POST\n- URL: `{{$env.CSV_PIPELINE_API_URL}}/uploads/{{$json.upload_id}}/approve`\n\nA 500 response is retryable; the API resumes unfinished buckets. A 409 means another approval is running.",
+        "height": 240,
+        "width": 380
+      },
+      "id": "b210bcc9-c95b-4857-aa94-226bf9ade7c0",
+      "name": "Approve API Placeholder",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        800,
+        -140
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 3B. Deny\nAdd an HTTP Request node:\n- Method: POST\n- URL: `{{$env.CSV_PIPELINE_API_URL}}/uploads/{{$json.upload_id}}/deny`\n\nDeny drops staging and progress without writing additional production rows.",
+        "height": 220,
+        "width": 380
+      },
+      "id": "cba670db-21b2-4900-a32d-3f3ca46e565b",
+      "name": "Deny API Placeholder",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        800,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 4. Show result\nAdd Form Ending nodes for approved, denied, retryable failure, busy, and missing-upload responses.",
+        "height": 180,
+        "width": 340
+      },
+      "id": "2cfcc012-8d72-4fd1-8b1c-592e2d7529bf",
+      "name": "Result Placeholder",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1260,
+        0
+      ]
+    }
+  ],
+  "connections": {},
+  "pinData": {},
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "5db99474-bd8e-4216-b558-263d7624ab70",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "tags": []
+}

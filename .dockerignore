@@ -1,0 +1,13 @@
+.git
+.gitignore
+.venv
+.pytest_cache
+__pycache__
+*.py[cod]
+*.egg-info
+data
+sample.csv
+*.csv
+.DS_Store
+n8n
+docker
