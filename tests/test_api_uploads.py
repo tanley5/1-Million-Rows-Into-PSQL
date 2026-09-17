@@ -1,10 +1,8 @@
-"""Failing tests for FastAPI upload / preview / approve / deny against real Postgres."""
+"""API upload / preview / sectioned approve / deny against real Postgres."""
 
 from __future__ import annotations
 
-import hashlib
 import io
-from pathlib import Path
 
 import pytest
 
@@ -32,14 +30,6 @@ def _valid_row(interaction_id: str, language: str = "EN") -> dict[str, str]:
     }
 
 
-def _id_for_bucket(bucket: int) -> str:
-    for value in range(100_000):
-        candidate = f"{value:012x}"
-        if hashlib.md5(candidate.encode()).digest()[0] == bucket:
-            return candidate
-    raise AssertionError(f"could not find an ID for bucket {bucket}")
-
-
 def test_api_app_importable():
     from api.main import app
 
@@ -49,6 +39,7 @@ def test_api_app_importable():
 @pytest.fixture
 def client(database_url: str, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("DATABASE_URL", database_url)
+    monkeypatch.setenv("SECTION_MAX_ROWS", "2")
     from fastapi.testclient import TestClient
 
     from api.main import app
@@ -58,9 +49,7 @@ def client(database_url: str, monkeypatch: pytest.MonkeyPatch):
 
 @pytest.mark.usefixtures("ensure_interactions_table", "cleanup_staging")
 def test_post_uploads_creates_staging_and_preview(client, db_conn):
-    payload = _csv_bytes(
-        [_valid_row(f"{i:012x}") for i in range(12)]
-    )
+    payload = _csv_bytes([_valid_row(f"{i:012x}") for i in range(12)])
     response = client.post(
         "/uploads",
         files={"file": ("sample.csv", payload, "text/csv")},
@@ -71,6 +60,8 @@ def test_post_uploads_creates_staging_and_preview(client, db_conn):
     assert "upload_id" in body
     assert isinstance(body["sample"], list)
     assert 1 <= len(body["sample"]) <= 100
+    assert body["section_count"] == 6
+    assert body["section_max_rows"] == 2
 
     stats = body["stats"]
     for key in (
@@ -96,17 +87,24 @@ def test_post_uploads_creates_staging_and_preview(client, db_conn):
     ).fetchone()
     assert relkind is not None
     assert relkind[0] == "u"  # UNLOGGED
-    bucket_index = db_conn.execute(
+    section_index = db_conn.execute(
         """
         SELECT indexdef
         FROM pg_indexes
         WHERE schemaname = 'public'
           AND tablename = %s
-          AND indexdef LIKE '%%get_byte%%'
+          AND indexdef LIKE '%%section_id%%'
         """,
         (staging,),
     ).fetchone()
-    assert bucket_index is not None
+    assert section_index is not None
+    section_ids = {
+        row[0]
+        for row in db_conn.execute(
+            f'SELECT DISTINCT section_id FROM "{staging}"'
+        ).fetchall()
+    }
+    assert section_ids == {0, 1, 2, 3, 4, 5}
 
 
 @pytest.mark.usefixtures("ensure_interactions_table", "cleanup_staging")
@@ -125,6 +123,10 @@ def test_approve_upserts_then_drops_staging(client, db_conn):
 
     response = client.post(f"/uploads/{upload_id}/approve")
     assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "approved"
+    assert body["staging_dropped"] is True
+    assert body["summary"]["completed"] == 1
 
     count = db_conn.execute("SELECT COUNT(*) FROM interactions").fetchone()[0]
     assert count == 2
@@ -174,83 +176,126 @@ def test_deny_drops_staging_without_prod_change(client, db_conn):
 def test_approve_or_deny_missing_upload_returns_404(client):
     assert client.post("/uploads/missing-id/approve").status_code == 404
     assert client.post("/uploads/missing-id/deny").status_code == 404
+    assert client.get("/uploads/missing-id/status").status_code == 404
+    assert client.post("/uploads/missing-id/sections/0/approve").status_code == 404
 
 
 @pytest.mark.usefixtures("ensure_interactions_table", "cleanup_staging")
-def test_approve_retries_only_unfinished_buckets(
+def test_approve_continues_after_section_failure_and_status_reports(
     client,
     db_conn,
     monkeypatch: pytest.MonkeyPatch,
 ):
     import api.db as db
 
-    lower_id = _id_for_bucket(10)
-    higher_id = _id_for_bucket(200)
-    payload = _csv_bytes([_valid_row(lower_id), _valid_row(higher_id)])
+    payload = _csv_bytes(
+        [
+            _valid_row("aaaaaaaaaaaa"),
+            _valid_row("bbbbbbbbbbbb"),
+            _valid_row("cccccccccccc"),
+            _valid_row("dddddddddddd"),
+        ]
+    )
+    upload = client.post(
+        "/uploads",
+        files={"file": ("sample.csv", payload, "text/csv")},
+    ).json()
+    upload_id = upload["upload_id"]
+    assert upload["section_count"] == 2
+
+    original_upsert = db._upsert_section
+
+    def fail_section(conn, table, section_id):
+        if section_id == 0:
+            raise RuntimeError("injected section failure")
+        return original_upsert(conn, table, section_id)
+
+    monkeypatch.setattr(db, "_upsert_section", fail_section)
+    failed = client.post(f"/uploads/{upload_id}/approve")
+    assert failed.status_code == 207
+    body = failed.json()
+    assert body["status"] == "partial"
+    assert body["staging_dropped"] is False
+    assert body["summary"]["failed"] == 1
+    assert body["summary"]["completed"] == 1
+
+    assert (
+        db_conn.execute("SELECT COUNT(*) FROM interactions").fetchone()[0] == 2
+    )
+
+    status = client.get(f"/uploads/{upload_id}/status")
+    assert status.status_code == 200
+    statuses = {
+        section["section_id"]: section["status"]
+        for section in status.json()["sections"]
+    }
+    assert statuses == {0: "failed", 1: "completed"}
+
+    monkeypatch.setattr(db, "_upsert_section", original_upsert)
+    section_retry = client.post(f"/uploads/{upload_id}/sections/0/approve")
+    assert section_retry.status_code == 200
+    assert section_retry.json()["status"] == "approved"
+    assert section_retry.json()["staging_dropped"] is True
+    assert db_conn.execute("SELECT COUNT(*) FROM interactions").fetchone()[0] == 4
+    assert (
+        db_conn.execute(
+            "SELECT COUNT(*) FROM upload_approval_progress WHERE upload_id = %s",
+            (upload_id,),
+        ).fetchone()[0]
+        == 0
+    )
+
+
+@pytest.mark.usefixtures("ensure_interactions_table", "cleanup_staging")
+def test_full_approve_retries_only_unfinished_sections(
+    client,
+    db_conn,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    import api.db as db
+
+    payload = _csv_bytes(
+        [
+            _valid_row("aaaaaaaaaaaa"),
+            _valid_row("bbbbbbbbbbbb"),
+            _valid_row("cccccccccccc"),
+            _valid_row("dddddddddddd"),
+        ]
+    )
     upload = client.post(
         "/uploads",
         files={"file": ("sample.csv", payload, "text/csv")},
     ).json()
     upload_id = upload["upload_id"]
 
-    original_upsert = db._upsert_bucket
+    original_upsert = db._upsert_section
 
-    def fail_bucket(conn, table, bucket):
-        if bucket == 128:
-            raise RuntimeError("injected bucket failure")
-        return original_upsert(conn, table, bucket)
+    def fail_section_zero(conn, table, section_id):
+        if section_id == 0:
+            raise RuntimeError("injected section failure")
+        return original_upsert(conn, table, section_id)
 
-    monkeypatch.setattr(db, "_upsert_bucket", fail_bucket)
-    failed = client.post(f"/uploads/{upload_id}/approve")
-    assert failed.status_code == 500
+    monkeypatch.setattr(db, "_upsert_section", fail_section_zero)
+    assert client.post(f"/uploads/{upload_id}/approve").status_code == 207
 
-    assert db_conn.execute(
-        "SELECT COUNT(*) FROM interactions WHERE interaction_id = %s",
-        (lower_id,),
-    ).fetchone()[0] == 1
-    assert db_conn.execute(
-        "SELECT COUNT(*) FROM interactions WHERE interaction_id = %s",
-        (higher_id,),
-    ).fetchone()[0] == 0
-    statuses = dict(
-        db_conn.execute(
-            """
-            SELECT bucket, status
-            FROM upload_approval_progress
-            WHERE upload_id = %s AND bucket IN (10, 128, 200)
-            """,
-            (upload_id,),
-        ).fetchall()
-    )
-    assert statuses == {10: "completed", 128: "failed", 200: "pending"}
+    retried = []
 
-    retried_buckets = []
+    def track_section(conn, table, section_id):
+        retried.append(section_id)
+        return original_upsert(conn, table, section_id)
 
-    def track_bucket(conn, table, bucket):
-        retried_buckets.append(bucket)
-        return original_upsert(conn, table, bucket)
-
-    monkeypatch.setattr(db, "_upsert_bucket", track_bucket)
-    retried = client.post(f"/uploads/{upload_id}/approve")
-    assert retried.status_code == 200
-    assert retried.json()["rows_upserted"] == 2
-    assert 10 not in retried_buckets
-    assert 128 in retried_buckets
-    assert 200 in retried_buckets
-
-    ids = db_conn.execute(
-        "SELECT interaction_id FROM interactions ORDER BY interaction_id"
-    ).fetchall()
-    assert [row[0] for row in ids] == sorted([lower_id, higher_id])
-    assert db_conn.execute(
-        "SELECT COUNT(*) FROM upload_approval_progress WHERE upload_id = %s",
-        (upload_id,),
-    ).fetchone()[0] == 0
+    monkeypatch.setattr(db, "_upsert_section", track_section)
+    response = client.post(f"/uploads/{upload_id}/approve")
+    assert response.status_code == 200
+    assert response.json()["status"] == "approved"
+    assert 0 in retried
+    assert 1 not in retried
+    assert db_conn.execute("SELECT COUNT(*) FROM interactions").fetchone()[0] == 4
 
 
 @pytest.mark.usefixtures("ensure_interactions_table", "cleanup_staging")
-def test_approve_does_not_rewrite_unchanged_conflicts(client):
-    interaction_id = _id_for_bucket(42)
+def test_approve_does_not_rewrite_unchanged_conflicts(client, db_conn):
+    interaction_id = "eeeeeeeeeeee"
     payload = _csv_bytes([_valid_row(interaction_id)])
 
     first = client.post(
@@ -271,7 +316,7 @@ def test_approve_does_not_rewrite_unchanged_conflicts(client):
 
 @pytest.mark.usefixtures("ensure_interactions_table", "cleanup_staging")
 def test_concurrent_approve_returns_409(client, db_conn):
-    payload = _csv_bytes([_valid_row(_id_for_bucket(7))])
+    payload = _csv_bytes([_valid_row("ffffffff0001")])
     upload = client.post(
         "/uploads",
         files={"file": ("sample.csv", payload, "text/csv")},
