@@ -107,3 +107,14 @@ def cleanup_staging(db_conn) -> Iterator[None]:
     ).fetchall()
     for (name,) in rows:
         db_conn.execute(f'DROP TABLE IF EXISTS "{name}"')
+    db_conn.execute(
+        """
+        DO $$
+        BEGIN
+            IF to_regclass('public.upload_approval_progress') IS NOT NULL THEN
+                DELETE FROM upload_approval_progress;
+            END IF;
+        END
+        $$;
+        """
+    )
