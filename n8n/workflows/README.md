@@ -13,25 +13,26 @@ After the Compose stack is healthy and initial n8n owner setup is complete:
 3. Import `upload-preview.skeleton.json`.
 4. Import `approve-deny.skeleton.json`.
 
-The same files are mounted read-only at `/workflows` inside the n8n container
-for CLI-based imports.
+The same files are mounted read-only at `/workflows` inside the n8n container.
 
 ## API target
-
-The n8n container receives:
 
 ```text
 CSV_PIPELINE_API_URL=http://api:8000
 ```
 
-Use `{{$env.CSV_PIPELINE_API_URL}}` in HTTP Request node URLs. Do not use
-`localhost:8000` from n8n; inside its container, `localhost` points back to
-n8n rather than FastAPI.
+Use `{{$env.CSV_PIPELINE_API_URL}}` in HTTP Request URLs. Do not use
+`localhost:8000` from inside the n8n container.
+
+## Sectioned approve (current API)
+
+- `POST /uploads` — returns `section_count` (≤100k rows per section).
+- `POST /uploads/{id}/approve` — continues past section failures; **200** all done, **207** partial.
+- `GET /uploads/{id}/status` — per-section completed/failed/pending.
+- `POST /uploads/{id}/sections/{section_id}/approve` — retry one section.
+- `POST /uploads/{id}/deny` — drop staging + progress.
 
 ## Build boundary
 
-The skeleton phase stops before adding or activating Form nodes. The next
-`n8n-forms` phase will turn these guides into:
-
-1. Upload CSV → call `POST /uploads` → display sample/stats.
-2. Approve/Deny form → call the selected upload endpoint → display status.
+This phase stops before adding or activating Form nodes. The `n8n-forms`
+phase turns these guides into working forms.

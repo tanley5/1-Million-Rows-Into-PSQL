@@ -30,6 +30,11 @@ from api.stats import CleaningStats
 app = FastAPI(title="CSV → Postgres pipeline")
 
 
+@app.get("/healthz")
+def healthz() -> dict:
+    return {"status": "ok"}
+
+
 @app.post("/uploads")
 async def create_upload(file: UploadFile = File(...)) -> dict:
     upload_id = uuid.uuid4().hex

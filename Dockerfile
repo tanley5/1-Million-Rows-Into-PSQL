@@ -6,12 +6,13 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-COPY pyproject.toml ./
+COPY pyproject.toml README.md ./
 COPY api ./api
 COPY scripts ./scripts
 COPY tests ./tests
 
-RUN python -m pip install --no-cache-dir ".[dev]"
+RUN python -m pip install --no-cache-dir --upgrade pip setuptools wheel \
+    && python -m pip install --no-cache-dir ".[dev]"
 
 EXPOSE 8000
 
