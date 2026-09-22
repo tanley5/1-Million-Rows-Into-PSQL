@@ -5,7 +5,7 @@
       "parameters": {
         "path": "csv-decide",
         "formTitle": "Approve or Deny upload",
-        "formDescription": "Use the upload_id from the preview page. Approve processes all unfinished ≤100k-row sections (continues on failure). Retry Section re-runs one failed section. Deny drops staging without changing production.",
+        "formDescription": "Use the upload_id from the preview page. Approve processes all unfinished \u2264100k-row sections (continues on failure). Retry Section re-runs one failed section. Deny drops staging without changing production.",
         "formFields": {
           "values": [
             {
@@ -21,9 +21,15 @@
               "fieldName": "action",
               "fieldOptions": {
                 "values": [
-                  { "option": "Approve All" },
-                  { "option": "Deny" },
-                  { "option": "Retry Section" }
+                  {
+                    "option": "Approve All"
+                  },
+                  {
+                    "option": "Deny"
+                  },
+                  {
+                    "option": "Retry Section"
+                  }
                 ]
               },
               "requiredField": true
@@ -44,7 +50,10 @@
       },
       "type": "n8n-nodes-base.formTrigger",
       "typeVersion": 2.6,
-      "position": [0, 0],
+      "position": [
+        0,
+        0
+      ],
       "id": "3b8556c2-616f-453b-8671-0a1c6c6ebfe0",
       "name": "Decision Form",
       "webhookId": "07654240-8d3a-4893-a6c5-ba71d6812ac2"
@@ -63,7 +72,10 @@
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.5,
-      "position": [260, 0],
+      "position": [
+        260,
+        0
+      ],
       "id": "edee2cec-9eab-4943-8ac4-93d5f0ba340a",
       "name": "GET Status"
     },
@@ -73,7 +85,10 @@
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [480, 0],
+      "position": [
+        480,
+        0
+      ],
       "id": "c0de0001-merge-form-status-0001",
       "name": "Merge Form And Status"
     },
@@ -161,7 +176,10 @@
       },
       "type": "n8n-nodes-base.switch",
       "typeVersion": 3.4,
-      "position": [720, 0],
+      "position": [
+        720,
+        0
+      ],
       "id": "edec26df-2178-464a-bbcf-7ecd629adef9",
       "name": "Route Action"
     },
@@ -179,7 +197,10 @@
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.5,
-      "position": [1000, -200],
+      "position": [
+        1000,
+        -200
+      ],
       "id": "d5ee976f-b8d6-445e-86ea-04bef659d943",
       "name": "POST Approve All"
     },
@@ -197,7 +218,10 @@
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.5,
-      "position": [1000, 0],
+      "position": [
+        1000,
+        0
+      ],
       "id": "ced13756-8d43-4209-b990-0a44f69edcf1",
       "name": "POST Deny"
     },
@@ -215,20 +239,39 @@
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.5,
-      "position": [1000, 200],
+      "position": [
+        1000,
+        200
+      ],
       "id": "5bbd36c2-0260-4540-a1ca-181b32b00267",
       "name": "POST Retry Section"
     },
     {
       "parameters": {
+        "jsCode": "const form = $('Decision Form').item.json;\nconst raw = $input.first().json || {};\nconst esc = (v) => String(v ?? '')\n  .replace(/&/g, '&amp;')\n  .replace(/</g, '&lt;')\n  .replace(/>/g, '&gt;')\n  .replace(/\"/g, '&quot;');\n\nconst status = raw.status || raw.detail || (raw.message ? 'error' : 'unknown');\nconst summary = raw.summary || {};\nconst sections = Array.isArray(raw.sections) ? raw.sections : [];\nconst uploadId = raw.upload_id || form.upload_id;\nconst decideUrl = `http://localhost:5678/form/csv-decide?upload_id=${encodeURIComponent(uploadId || '')}`;\n\nlet meaning = 'See details below.';\nif (status === 'approved' && raw.staging_dropped) meaning = 'All sections are in production. Staging was dropped.';\nelse if (status === 'partial') meaning = 'Some sections failed. Staging was kept \u2014 retry failed section IDs.';\nelse if (status === 'denied') meaning = 'Staging and progress were dropped. Production was not changed.';\nelse if (raw.detail) meaning = typeof raw.detail === 'string' ? raw.detail : JSON.stringify(raw.detail);\n\nconst failed = sections.filter((s) => s.status === 'failed').map((s) => s.section_id);\nconst failedIds = failed.length ? failed.join(', ') : '\u2014';\n\nlet sectionsHtml = '<p><em>No section rows in this response (common after full approve cleanup or deny).</em></p>';\nif (sections.length) {\n  const rows = sections.map((s) =>\n    `<tr><td>${esc(s.section_id)}</td><td>${esc(s.status)}</td><td>${esc(s.rows_affected)}</td><td>${esc(s.attempts)}</td><td>${esc(s.last_error || '')}</td></tr>`\n  ).join('');\n  sectionsHtml = `<table><thead><tr><th>Section</th><th>Status</th><th>Rows affected</th><th>Attempts</th><th>Last error</th></tr></thead><tbody>${rows}</tbody></table>`;\n}\n\nconst html = `\n<h2>${esc(status)}</h2>\n<p>${esc(meaning)}</p>\n<table>\n  <tbody>\n    <tr><th>Upload ID</th><td>${esc(uploadId)}</td></tr>\n    <tr><th>Action</th><td>${esc(form.action)}</td></tr>\n    <tr><th>Rows upserted</th><td>${esc(raw.rows_upserted ?? '')}</td></tr>\n    <tr><th>Staging dropped</th><td>${esc(raw.staging_dropped === true ? 'yes' : raw.staging_dropped === false ? 'no' : '')}</td></tr>\n    <tr><th>Completed sections</th><td>${esc(summary.completed ?? '')}</td></tr>\n    <tr><th>Failed sections</th><td>${esc(summary.failed ?? '')}</td></tr>\n    <tr><th>Pending sections</th><td>${esc(summary.pending ?? '')}</td></tr>\n    <tr><th>Failed section IDs</th><td>${esc(failedIds)}</td></tr>\n  </tbody>\n</table>\n\n<h3>Sections</h3>\n${sectionsHtml}\n\n<hr>\n<p><a href=\"${esc(decideUrl)}\"><strong>Run another decision \u2192</strong></a></p>\n`.trim();\n\nreturn [{ json: { html, upload_id: uploadId, status: String(status), decide_url: decideUrl } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1240,
+        0
+      ],
+      "id": "format-decision-result-0001",
+      "name": "Format Result"
+    },
+    {
+      "parameters": {
         "operation": "completion",
-        "completionTitle": "Decision result",
-        "completionMessage": "=## Result\n\n**HTTP / body status fields below reflect the API response.**\n\n```json\n{{ JSON.stringify($json, null, 2) }}\n```\n\n### How to read this\n- `status: approved` and `staging_dropped: true` → all sections in prod; staging gone\n- `status: partial` → some sections failed; staging kept — retry failed `section_id`s via this form\n- `status: denied` → staging dropped; production unchanged\n- `detail` / error payloads → 404 missing upload, 409 busy, or section failure\n\n[Run another decision](http://localhost:5678/form/csv-decide?upload_id={{ $('Decision Form').item.json.upload_id }})",
+        "respondWith": "showText",
+        "responseText": "={{ $json.html }}",
         "options": {}
       },
       "type": "n8n-nodes-base.form",
       "typeVersion": 2.5,
-      "position": [1280, 0],
+      "position": [
+        1480,
+        0
+      ],
       "id": "9feed91b-057a-42d9-bb2d-a556957438b6",
       "name": "Result Completion",
       "webhookId": "6890a7d3-55cd-4dea-9f06-aee30a592eed"
@@ -298,7 +341,7 @@
       "main": [
         [
           {
-            "node": "Result Completion",
+            "node": "Format Result",
             "type": "main",
             "index": 0
           }
@@ -309,7 +352,7 @@
       "main": [
         [
           {
-            "node": "Result Completion",
+            "node": "Format Result",
             "type": "main",
             "index": 0
           }
@@ -317,6 +360,17 @@
       ]
     },
     "POST Retry Section": {
+      "main": [
+        [
+          {
+            "node": "Format Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Result": {
       "main": [
         [
           {
@@ -333,7 +387,7 @@
     "executionOrder": "v1",
     "binaryMode": "separate"
   },
-  "versionId": "a1b2c3d4-approve-deny-spec-001",
+  "versionId": "approve-deny-ui-002",
   "meta": {
     "templateCredsSetupCompleted": true
   },

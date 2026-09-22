@@ -15,22 +15,22 @@ Both drafts are **inactive**. Import into n8n, set env access, then activate.
 
 With Compose up (`http://localhost:5678`):
 
-1. **Import from File** → `upload-preview.draft.json`
-2. **Import from File** → `approve-deny.draft.json`
+1. **Import from File** → `upload-preview.draft.json` (if already imported, delete/replace the old workflow first so Form Ending changes apply)
+2. **Import from File** → `approve-deny.draft.json` (same)
 3. Confirm workflow settings can read env (`CSV_PIPELINE_API_URL=http://api:8000` is set on the n8n service; `N8N_BLOCK_ENV_ACCESS_IN_NODE=false`).
 4. Activate both workflows.
 5. Open:
    - Upload: `http://localhost:5678/form/csv-upload`
    - Decide: `http://localhost:5678/form/csv-decide?upload_id=<id>`
 
+Completion pages now use **Show Text** HTML tables + a clickable decide link (not raw JSON / bare URL).
 ## Upload workflow
 
-`Upload Form` → `POST /uploads` (multipart field `file`) → completion page with:
+`Upload Form` → `POST /uploads` → `Format Preview` → Form Ending (**Show Text** HTML):
 
-- `upload_id`, `section_count`, `section_max_rows`
-- five cleaning stats (`rows_in`, `rows_out`, `rows_error`, `normalized_per_column`, `blank_per_column`)
-- `columns` + `sample`
-- link to the decide form with `upload_id` query param
+- `upload_id`, section counts
+- cleaning stats / columns / sample as HTML tables (not raw JSON)
+- **Continue to Approve / Deny →** link to `/form/csv-decide?upload_id=...`
 
 ## Approve / Deny workflow
 
@@ -46,7 +46,7 @@ Flow:
 2. Merge form fields with status payload
 3. Switch on `action`
 4. `POST .../approve` | `POST .../deny` | `POST .../sections/{section_id}/approve`
-5. Completion page shows the API JSON (`approved` / `partial` / `denied`, summaries, errors)
+5. `Format Result` → Form Ending (**Show Text** HTML): status meaning, summary table, sections table, **Run another decision →** link
 
 ## API reminder
 

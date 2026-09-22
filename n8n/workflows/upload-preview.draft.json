@@ -5,7 +5,7 @@
       "parameters": {
         "path": "csv-upload",
         "formTitle": "CSV Upload",
-        "formDescription": "Upload a CSV with the five interaction columns. The API will clean it, COPY into UNLOGGED staging in ≤100k-row sections, and return a preview.",
+        "formDescription": "Upload a CSV with the five interaction columns. The API will clean it, COPY into UNLOGGED staging in \u2264100k-row sections, and return a preview.",
         "formFields": {
           "values": [
             {
@@ -25,7 +25,10 @@
       },
       "type": "n8n-nodes-base.formTrigger",
       "typeVersion": 2.6,
-      "position": [0, 0],
+      "position": [
+        0,
+        0
+      ],
       "id": "16cf42fc-82fa-4d75-8cc1-31f3c447098d",
       "name": "Upload Form",
       "webhookId": "33d475db-309e-4624-b6c9-8f5581829be5"
@@ -55,20 +58,39 @@
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.5,
-      "position": [280, 0],
+      "position": [
+        260,
+        0
+      ],
       "id": "f23df499-8175-4491-a79a-4e888e09f13e",
       "name": "POST Uploads"
     },
     {
       "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst esc = (v) => String(v ?? '')\n  .replace(/&/g, '&amp;')\n  .replace(/</g, '&lt;')\n  .replace(/>/g, '&gt;')\n  .replace(/\"/g, '&quot;');\n\nconst stats = data.stats || {};\nconst norm = stats.normalized_per_column || {};\nconst blank = stats.blank_per_column || {};\nconst columns = Array.isArray(data.columns) ? data.columns : [];\nconst sample = Array.isArray(data.sample) ? data.sample : [];\nconst sampleCols = ['start_datetime', 'end_datetime', 'language', 'interaction_id', 'contact'];\n\nfunction kvTable(obj) {\n  const keys = Object.keys(obj || {});\n  if (!keys.length) return '<p><em>None</em></p>';\n  const rows = keys.map((k) => `<tr><td>${esc(k)}</td><td>${esc(obj[k])}</td></tr>`).join('');\n  return `<table><thead><tr><th>Column</th><th>Count</th></tr></thead><tbody>${rows}</tbody></table>`;\n}\n\nfunction columnsTable() {\n  if (!columns.length) return '<p><em>No columns</em></p>';\n  const rows = columns.map((c) => `<tr><td>${esc(c.name)}</td><td>${esc(c.datatype)}</td></tr>`).join('');\n  return `<table><thead><tr><th>Name</th><th>Datatype</th></tr></thead><tbody>${rows}</tbody></table>`;\n}\n\nfunction sampleTable() {\n  if (!sample.length) return '<p><em>No sample rows</em></p>';\n  const head = sampleCols.map((c) => `<th>${esc(c)}</th>`).join('');\n  const rows = sample.map((row) => `<tr>${sampleCols.map((c) => `<td>${esc(row[c])}</td>`).join('')}</tr>`).join('');\n  return `<table><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table>`;\n}\n\nconst decideUrl = `http://localhost:5678/form/csv-decide?upload_id=${encodeURIComponent(data.upload_id || '')}`;\n\nconst html = `\n<h2>Upload received</h2>\n<p><strong>Upload ID:</strong> ${esc(data.upload_id)}<br>\n<strong>Sections:</strong> ${esc(data.section_count)} (max ${esc(data.section_max_rows)} rows each)</p>\n\n<h3>Cleaning stats</h3>\n<table>\n  <thead><tr><th>Metric</th><th>Value</th></tr></thead>\n  <tbody>\n    <tr><td>rows_in</td><td>${esc(stats.rows_in ?? 0)}</td></tr>\n    <tr><td>rows_out</td><td>${esc(stats.rows_out ?? 0)}</td></tr>\n    <tr><td>rows_error</td><td>${esc(stats.rows_error ?? 0)}</td></tr>\n  </tbody>\n</table>\n\n<h3>Normalized per column</h3>\n${kvTable(norm)}\n\n<h3>Blank per column</h3>\n${kvTable(blank)}\n\n<h3>Columns</h3>\n${columnsTable()}\n\n<h3>Sample (${esc(sample.length)} staging rows)</h3>\n${sampleTable()}\n\n<hr>\n<p><a href=\"${esc(decideUrl)}\"><strong>Continue to Approve / Deny \u2192</strong></a></p>\n`.trim();\n\nreturn [{ json: { html, upload_id: data.upload_id, decide_url: decideUrl } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        0
+      ],
+      "id": "format-upload-preview-0001",
+      "name": "Format Preview"
+    },
+    {
+      "parameters": {
         "operation": "completion",
-        "completionTitle": "Upload preview",
-        "completionMessage": "=## Upload received\n\n**Upload ID:** `{{ $json.upload_id }}`  \n**Sections:** {{ $json.section_count }} (max {{ $json.section_max_rows }} rows each)\n\n### Cleaning stats\n- **rows_in:** {{ $json.stats.rows_in }}\n- **rows_out:** {{ $json.stats.rows_out }}\n- **rows_error:** {{ $json.stats.rows_error }}\n- **normalized_per_column:** `{{ JSON.stringify($json.stats.normalized_per_column) }}`\n- **blank_per_column:** `{{ JSON.stringify($json.stats.blank_per_column) }}`\n\n### Columns\n```json\n{{ JSON.stringify($json.columns, null, 2) }}\n```\n\n### Sample (first ≤100 staging rows)\n```json\n{{ JSON.stringify($json.sample, null, 2) }}\n```\n\n### Next step\n[Open Approve / Deny form](http://localhost:5678/form/csv-decide?upload_id={{ $json.upload_id }})",
+        "respondWith": "showText",
+        "responseText": "={{ $json.html }}",
         "options": {}
       },
       "type": "n8n-nodes-base.form",
       "typeVersion": 2.5,
-      "position": [560, 0],
+      "position": [
+        780,
+        0
+      ],
       "id": "5fecc91d-37fa-444e-a811-cff79b01fdea",
       "name": "Preview Completion",
       "webhookId": "63a1c851-0f88-4bf1-af70-d3f15a269af7"
@@ -91,6 +113,17 @@
       "main": [
         [
           {
+            "node": "Format Preview",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Preview": {
+      "main": [
+        [
+          {
             "node": "Preview Completion",
             "type": "main",
             "index": 0
@@ -104,7 +137,7 @@
     "executionOrder": "v1",
     "binaryMode": "separate"
   },
-  "versionId": "a1b2c3d4-upload-preview-spec-001",
+  "versionId": "upload-preview-ui-002",
   "meta": {
     "templateCredsSetupCompleted": true
   },
