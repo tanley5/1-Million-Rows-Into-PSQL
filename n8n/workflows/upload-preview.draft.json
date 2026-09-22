@@ -1,0 +1,112 @@
+{
+  "name": "CSV Pipeline - Upload and Preview",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "csv-upload",
+        "formTitle": "CSV Upload",
+        "formDescription": "Upload a CSV with the five interaction columns. The API will clean it, COPY into UNLOGGED staging in ≤100k-row sections, and return a preview.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "CSV file",
+              "fieldType": "file",
+              "fieldName": "file",
+              "acceptFileTypes": ".csv",
+              "requiredField": true,
+              "multipleFiles": false
+            }
+          ]
+        },
+        "responseMode": "lastNode",
+        "options": {
+          "buttonLabel": "Upload and preview"
+        }
+      },
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.6,
+      "position": [0, 0],
+      "id": "16cf42fc-82fa-4d75-8cc1-31f3c447098d",
+      "name": "Upload Form",
+      "webhookId": "33d475db-309e-4624-b6c9-8f5581829be5"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.CSV_PIPELINE_API_URL}}/uploads",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "file",
+              "inputDataFieldName": "file"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [280, 0],
+      "id": "f23df499-8175-4491-a79a-4e888e09f13e",
+      "name": "POST Uploads"
+    },
+    {
+      "parameters": {
+        "operation": "completion",
+        "completionTitle": "Upload preview",
+        "completionMessage": "=## Upload received\n\n**Upload ID:** `{{ $json.upload_id }}`  \n**Sections:** {{ $json.section_count }} (max {{ $json.section_max_rows }} rows each)\n\n### Cleaning stats\n- **rows_in:** {{ $json.stats.rows_in }}\n- **rows_out:** {{ $json.stats.rows_out }}\n- **rows_error:** {{ $json.stats.rows_error }}\n- **normalized_per_column:** `{{ JSON.stringify($json.stats.normalized_per_column) }}`\n- **blank_per_column:** `{{ JSON.stringify($json.stats.blank_per_column) }}`\n\n### Columns\n```json\n{{ JSON.stringify($json.columns, null, 2) }}\n```\n\n### Sample (first ≤100 staging rows)\n```json\n{{ JSON.stringify($json.sample, null, 2) }}\n```\n\n### Next step\n[Open Approve / Deny form](http://localhost:5678/form/csv-decide?upload_id={{ $json.upload_id }})",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 2.5,
+      "position": [560, 0],
+      "id": "5fecc91d-37fa-444e-a811-cff79b01fdea",
+      "name": "Preview Completion",
+      "webhookId": "63a1c851-0f88-4bf1-af70-d3f15a269af7"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Upload Form": {
+      "main": [
+        [
+          {
+            "node": "POST Uploads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "POST Uploads": {
+      "main": [
+        [
+          {
+            "node": "Preview Completion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "a1b2c3d4-upload-preview-spec-001",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "tags": []
+}

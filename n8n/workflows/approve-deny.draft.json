@@ -1,0 +1,341 @@
+{
+  "name": "CSV Pipeline - Approve or Deny",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "csv-decide",
+        "formTitle": "Approve or Deny upload",
+        "formDescription": "Use the upload_id from the preview page. Approve processes all unfinished ≤100k-row sections (continues on failure). Retry Section re-runs one failed section. Deny drops staging without changing production.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Upload ID",
+              "fieldType": "text",
+              "fieldName": "upload_id",
+              "placeholder": "hex upload_id from preview",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Action",
+              "fieldType": "dropdown",
+              "fieldName": "action",
+              "fieldOptions": {
+                "values": [
+                  { "option": "Approve All" },
+                  { "option": "Deny" },
+                  { "option": "Retry Section" }
+                ]
+              },
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Section ID",
+              "fieldType": "number",
+              "fieldName": "section_id",
+              "placeholder": "Required when Action is Retry Section (0-based)",
+              "requiredField": false
+            }
+          ]
+        },
+        "responseMode": "lastNode",
+        "options": {
+          "buttonLabel": "Submit"
+        }
+      },
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.6,
+      "position": [0, 0],
+      "id": "3b8556c2-616f-453b-8671-0a1c6c6ebfe0",
+      "name": "Decision Form",
+      "webhookId": "07654240-8d3a-4893-a6c5-ba71d6812ac2"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{$env.CSV_PIPELINE_API_URL}}/uploads/{{ $json.upload_id }}/status",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [260, 0],
+      "id": "edee2cec-9eab-4943-8ac4-93d5f0ba340a",
+      "name": "GET Status"
+    },
+    {
+      "parameters": {
+        "jsCode": "const form = $('Decision Form').item.json;\nconst status = $input.first().json;\nreturn [{\n  json: {\n    upload_id: form.upload_id,\n    action: form.action,\n    section_id: form.section_id,\n    status_before: status,\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 0],
+      "id": "c0de0001-merge-form-status-0001",
+      "name": "Merge Form And Status"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "24e9a893-b6a2-464f-bc55-9b6a00758304",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "Approve All",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Approve All"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "59ee68fb-36fa-45bb-98cc-571ae9c4c493",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "Deny",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Deny"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "ad2dbbf9-7b03-4953-97d5-e5166c43714a",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "Retry Section",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Retry Section"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [720, 0],
+      "id": "edec26df-2178-464a-bbcf-7ecd629adef9",
+      "name": "Route Action"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.CSV_PIPELINE_API_URL}}/uploads/{{ $json.upload_id }}/approve",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [1000, -200],
+      "id": "d5ee976f-b8d6-445e-86ea-04bef659d943",
+      "name": "POST Approve All"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.CSV_PIPELINE_API_URL}}/uploads/{{ $json.upload_id }}/deny",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [1000, 0],
+      "id": "ced13756-8d43-4209-b990-0a44f69edcf1",
+      "name": "POST Deny"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.CSV_PIPELINE_API_URL}}/uploads/{{ $json.upload_id }}/sections/{{ $json.section_id }}/approve",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [1000, 200],
+      "id": "5bbd36c2-0260-4540-a1ca-181b32b00267",
+      "name": "POST Retry Section"
+    },
+    {
+      "parameters": {
+        "operation": "completion",
+        "completionTitle": "Decision result",
+        "completionMessage": "=## Result\n\n**HTTP / body status fields below reflect the API response.**\n\n```json\n{{ JSON.stringify($json, null, 2) }}\n```\n\n### How to read this\n- `status: approved` and `staging_dropped: true` → all sections in prod; staging gone\n- `status: partial` → some sections failed; staging kept — retry failed `section_id`s via this form\n- `status: denied` → staging dropped; production unchanged\n- `detail` / error payloads → 404 missing upload, 409 busy, or section failure\n\n[Run another decision](http://localhost:5678/form/csv-decide?upload_id={{ $('Decision Form').item.json.upload_id }})",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 2.5,
+      "position": [1280, 0],
+      "id": "9feed91b-057a-42d9-bb2d-a556957438b6",
+      "name": "Result Completion",
+      "webhookId": "6890a7d3-55cd-4dea-9f06-aee30a592eed"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Decision Form": {
+      "main": [
+        [
+          {
+            "node": "GET Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GET Status": {
+      "main": [
+        [
+          {
+            "node": "Merge Form And Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Form And Status": {
+      "main": [
+        [
+          {
+            "node": "Route Action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Action": {
+      "main": [
+        [
+          {
+            "node": "POST Approve All",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "POST Deny",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "POST Retry Section",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "POST Approve All": {
+      "main": [
+        [
+          {
+            "node": "Result Completion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "POST Deny": {
+      "main": [
+        [
+          {
+            "node": "Result Completion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "POST Retry Section": {
+      "main": [
+        [
+          {
+            "node": "Result Completion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "a1b2c3d4-approve-deny-spec-001",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "tags": []
+}
