@@ -24,6 +24,7 @@ With Compose up (`http://localhost:5678`):
    - Decide: `http://localhost:5678/form/csv-decide?upload_id=<id>`
 
 Completion pages now use **Show Text** HTML tables + a clickable decide link (not raw JSON / bare URL).
+
 ## Upload workflow
 
 `Upload Form` → `POST /uploads` → `Format Preview` → Form Ending (**Show Text** HTML):
